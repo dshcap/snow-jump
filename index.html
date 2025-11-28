@@ -45,7 +45,7 @@
 </head>
 <body>
   <div id="ui">SCORE: 0</div>
-  <div id="msg">← → или A/D — двигаться, пробел — заново после проигрыша</div>
+  <div id="msg">Веди мышкой по горизонтали (или пальцем по экрану)</div>
   <canvas id="game" width="480" height="720"></canvas>
 
   <script>
@@ -56,6 +56,11 @@
 
     const W = canvas.width;
     const H = canvas.height;
+
+    // ---- ФОН ----
+    const bgImage = new Image();
+    // Если картинка лежит в папке gallery, то напиши: "gallery/mountainsgame.png"
+    bgImage.src = "mountainsgame.png";
 
     // ----- GAME STATE -----
     let platforms = [];
@@ -68,7 +73,7 @@
     let gameOver = false;
     let started = false;
 
-    // ----- INPUT -----
+    // ----- INPUT: клавиши -----
     window.addEventListener("keydown", (e) => {
       keys[e.key.toLowerCase()] = true;
 
@@ -81,6 +86,26 @@
       keys[e.key.toLowerCase()] = false;
     });
 
+    // ----- INPUT: мышь -----
+    function handlePointerMove(clientX) {
+      if (!player || gameOver) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = clientX - rect.left;
+      player.targetX = mx - player.w / 2; // центр героя под мышкой
+    }
+
+    canvas.addEventListener("mousemove", (e) => {
+      handlePointerMove(e.clientX);
+    });
+
+    // ----- INPUT: тач -----
+    canvas.addEventListener("touchmove", (e) => {
+      e.preventDefault();
+      if (e.touches && e.touches[0]) {
+        handlePointerMove(e.touches[0].clientX);
+      }
+    }, { passive: false });
+
     // ----- INIT -----
     function startGame() {
       platforms = [];
@@ -91,18 +116,19 @@
       gameOver = false;
       started = true;
 
-      // player in the middle bottom
+      // player посередине снизу
       player = {
         x: W / 2 - 20,
         y: H - 120,
         w: 40,
         h: 50,
-        vy: -18, // initial jump
+        vy: -18, // первый прыжок вверх
         gravity: 0.7,
         moveSpeed: 5,
+        targetX: W / 2 - 20
       };
 
-      // initial platforms
+      // стартовые платформы
       const baseY = H - 50;
       for (let i = 0; i < 10; i++) {
         platforms.push({
@@ -113,7 +139,7 @@
         });
       }
 
-      // snow
+      // снежинки
       for (let i = 0; i < 80; i++) {
         snowflakes.push({
           x: Math.random() * W,
@@ -145,19 +171,23 @@
       }
 
       if (!gameOver) {
-        // player movement
+        // движение по X: мышь + клавиши
+        if (player.targetX !== undefined) {
+          // плавно тянемся к мышке
+          player.x += (player.targetX - player.x) * 0.2;
+        }
         if (keys["arrowleft"] || keys["a"]) player.x -= player.moveSpeed;
         if (keys["arrowright"] || keys["d"]) player.x += player.moveSpeed;
 
-        // horizontal wrap
-        if (player.x + player.w < 0) player.x = W;
-        if (player.x > W) player.x = -player.w;
+        // ограничение по краям экрана
+        if (player.x < -player.w * 0.5) player.x = -player.w * 0.5;
+        if (player.x + player.w > W + player.w * 0.5) player.x = W - player.w * 0.5;
 
-        // gravity
+        // гравитация
         player.vy += player.gravity;
         player.y += player.vy;
 
-        // collision with platforms (only when falling)
+        // прыжок от платформ (только когда падает)
         if (player.vy > 0) {
           for (const p of platforms) {
             if (
@@ -167,12 +197,12 @@
               player.y + player.h < p.y + p.h &&
               player.vy > 0
             ) {
-              player.vy = -18; // jump
+              player.vy = -18; // подпрыгнули
             }
           }
         }
 
-        // camera follows up
+        // камера: когда герой поднимается выше 40% высоты — тянем всё вниз
         if (player.y < H * 0.4) {
           const diff = H * 0.4 - player.y;
           player.y += diff;
@@ -181,20 +211,20 @@
           score = Math.floor(maxHeight);
         }
 
-        // if fell down
+        // если улетел вниз — game over
         if (player.y - cameraY > H + 200) {
           gameOver = true;
-          msg.textContent = "GAME OVER — пробел, чтобы сыграть ещё раз";
+          msg.textContent = "GAME OVER — нажми пробел, чтобы сыграть ещё раз";
         }
 
-        // platforms: remove below, add above
+        // платформы: удаляем снизу, добавляем сверху
         platforms = platforms.filter((p) => p.y - cameraY < H + 40);
         while (platforms.length < 12) {
           const highest = platforms.reduce((m, p) => Math.min(m, p.y), Infinity);
           spawnPlatform(highest - 70 - Math.random() * 30);
         }
 
-        // snow movement
+        // снежинки
         for (const s of snowflakes) {
           s.y += s.speed;
           if (s.y > H) {
@@ -212,29 +242,23 @@
 
     // ----- DRAW -----
     function drawBackground() {
-      // sky gradient is from CSS, here – mountains
+      // Фон-горы
       ctx.save();
-      ctx.translate(0, -cameraY * 0.3); // parallax for mountains
+      ctx.translate(0, -cameraY * 0.1); // лёгкий параллакс
 
-      // far mountains
-      ctx.fillStyle = "#aee4ff";
-      ctx.beginPath();
-      ctx.moveTo(0, H * 0.8);
-      ctx.lineTo(W * 0.3, H * 0.3);
-      ctx.lineTo(W * 0.6, H * 0.8);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.moveTo(W * 0.4, H * 0.9);
-      ctx.lineTo(W * 0.8, H * 0.35);
-      ctx.lineTo(W * 1.1, H * 0.9);
-      ctx.closePath();
-      ctx.fill();
-
+      if (bgImage.complete && bgImage.naturalWidth > 0) {
+        ctx.drawImage(bgImage, 0, 0, W, H);
+      } else {
+        // запасной градиент, пока фон не загрузился
+        const g = ctx.createLinearGradient(0, 0, 0, H);
+        g.addColorStop(0, "#8fd6ff");
+        g.addColorStop(1, "#6ab4ff");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+      }
       ctx.restore();
 
-      // snowflakes on top
+      // снежинки поверх фона
       ctx.save();
       ctx.translate(0, -cameraY * 0.1);
       ctx.fillStyle = "rgba(255,255,255,0.9)";
@@ -257,7 +281,7 @@
         ctx.fill();
         ctx.stroke();
 
-        // simple ice texture
+        // текстура льда
         ctx.strokeStyle = "rgba(255,255,255,0.7)";
         ctx.beginPath();
         ctx.moveTo(p.x + 6, y + 8);
@@ -274,11 +298,11 @@
       const x = player.x;
       const y = player.y - cameraY;
 
-      // backpack
+      // рюкзак
       ctx.fillStyle = "#c0243a";
       ctx.fillRect(x - 8, y + 8, 16, 30);
 
-      // legs
+      // ноги
       ctx.fillStyle = "#e04848";
       ctx.fillRect(x + 4, y + player.h - 18, 12, 18);
       ctx.fillRect(x + 22, y + player.h - 18, 12, 18);
@@ -286,17 +310,16 @@
       ctx.fillRect(x + 4, y + player.h - 6, 12, 6);
       ctx.fillRect(x + 22, y + player.h - 6, 12, 6);
 
-      // body
+      // тело
       ctx.fillStyle = "#1f77b4";
       ctx.fillRect(x + 4, y + 16, 30, 26);
       ctx.fillStyle = "#0b4f80";
-      ctx.fillRect(x + 16, y + 16, 4, 26); // zipper
-      ctx.fillRect(x + 4, y + 16, 6, 18);  // sleeve L
+      ctx.fillRect(x + 16, y + 16, 4, 26); // молния
+      ctx.fillRect(x + 4, y + 16, 6, 18);  // рукав
 
-      // arms
-      const raising = player.vy < 0; // jumping up
+      // руки
+      const raising = player.vy < 0; // прыгает вверх
       if (raising) {
-        // right arm up
         ctx.fillStyle = "#1f77b4";
         ctx.fillRect(x + 30, y + 4, 8, 20);
         ctx.fillStyle = "#f7c390";
@@ -308,17 +331,17 @@
         ctx.fillRect(x + 32, y + 36, 8, 8);
       }
 
-      // head
+      // голова
       ctx.fillStyle = "#3b2b20";
-      ctx.fillRect(x + 4, y, 32, 12); // hair
+      ctx.fillRect(x + 4, y, 32, 12); // волосы
       ctx.fillStyle = "#f7c390";
       ctx.fillRect(x + 6, y + 8, 28, 16);
 
-      // face details
+      // лицо
       ctx.fillStyle = "#3b2b20";
-      ctx.fillRect(x + 12, y + 14, 4, 4); // eye
-      ctx.fillRect(x + 22, y + 14, 4, 4); // eye
-      ctx.fillRect(x + 14, y + 20, 10, 2); // mouth
+      ctx.fillRect(x + 12, y + 14, 4, 4); // глаз 1
+      ctx.fillRect(x + 22, y + 14, 4, 4); // глаз 2
+      ctx.fillRect(x + 14, y + 20, 10, 2); // рот
     }
 
     function draw() {
@@ -328,7 +351,7 @@
       drawPlayer();
     }
 
-    // allow roundRect on some older browsers
+    // polyfill roundRect
     if (!CanvasRenderingContext2D.prototype.roundRect) {
       CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
         if (w < 2 * r) r = w / 2;
@@ -344,7 +367,7 @@
       };
     }
 
-    // ---- СТАРТ ИГРЫ ----
+    // ---- СТАРТ ----
     startGame();
     update();
   </script>
