@@ -45,7 +45,7 @@
 </head>
 <body>
   <div id="ui">SCORE: 0</div>
-  <div id="msg">← → или A/D — двигаться, пробел — начать</div>
+  <div id="msg">← → или A/D — двигаться, пробел — заново после проигрыша</div>
   <canvas id="game" width="480" height="720"></canvas>
 
   <script>
@@ -60,7 +60,7 @@
     // ----- GAME STATE -----
     let platforms = [];
     let snowflakes = [];
-    let player;
+    let player = null;
     let cameraY = 0;
     let maxHeight = 0;
     let score = 0;
@@ -71,7 +71,9 @@
     // ----- INPUT -----
     window.addEventListener("keydown", (e) => {
       keys[e.key.toLowerCase()] = true;
-      if (!started && (e.key === " " || e.key === "ArrowUp")) {
+
+      // рестарт после game over
+      if (gameOver && e.key === " ") {
         startGame();
       }
     });
@@ -136,76 +138,74 @@
 
     // ----- UPDATE -----
     function update() {
-      if (!started) {
-        draw(); // just idle background
-        requestAnimationFrame(update);
-        return;
-      }
-      if (gameOver) {
+      if (!started || !player) {
         draw();
         requestAnimationFrame(update);
         return;
       }
 
-      // player movement
-      if (keys["arrowleft"] || keys["a"]) player.x -= player.moveSpeed;
-      if (keys["arrowright"] || keys["d"]) player.x += player.moveSpeed;
+      if (!gameOver) {
+        // player movement
+        if (keys["arrowleft"] || keys["a"]) player.x -= player.moveSpeed;
+        if (keys["arrowright"] || keys["d"]) player.x += player.moveSpeed;
 
-      // horizontal wrap
-      if (player.x + player.w < 0) player.x = W;
-      if (player.x > W) player.x = -player.w;
+        // horizontal wrap
+        if (player.x + player.w < 0) player.x = W;
+        if (player.x > W) player.x = -player.w;
 
-      // gravity
-      player.vy += player.gravity;
-      player.y += player.vy;
+        // gravity
+        player.vy += player.gravity;
+        player.y += player.vy;
 
-      // collision with platforms (only when falling)
-      if (player.vy > 0) {
-        for (const p of platforms) {
-          if (
-            player.x + player.w > p.x &&
-            player.x < p.x + p.w &&
-            player.y + player.h > p.y &&
-            player.y + player.h < p.y + p.h &&
-            player.vy > 0
-          ) {
-            player.vy = -18; // jump
+        // collision with platforms (only when falling)
+        if (player.vy > 0) {
+          for (const p of platforms) {
+            if (
+              player.x + player.w > p.x &&
+              player.x < p.x + p.w &&
+              player.y + player.h > p.y &&
+              player.y + player.h < p.y + p.h &&
+              player.vy > 0
+            ) {
+              player.vy = -18; // jump
+            }
           }
         }
-      }
 
-      // camera follows up
-      if (player.y < H * 0.4) {
-        const diff = H * 0.4 - player.y;
-        player.y += diff;
-        cameraY += diff;
-        maxHeight = Math.max(maxHeight, cameraY);
-        score = Math.floor(maxHeight);
-      }
-
-      // if fell down
-      if (player.y - cameraY > H + 200) {
-        gameOver = true;
-        msg.textContent = "GAME OVER — пробел, чтобы сыграть ещё раз";
-      }
-
-      // platforms: remove below, add above
-      platforms = platforms.filter((p) => p.y - cameraY < H + 40);
-      while (platforms.length < 12) {
-        const highest = platforms.reduce((m, p) => Math.min(m, p.y), Infinity);
-        spawnPlatform(highest - 70 - Math.random() * 30);
-      }
-
-      // snow movement
-      for (const s of snowflakes) {
-        s.y += s.speed;
-        if (s.y > H) {
-          s.y = -5;
-          s.x = Math.random() * W;
+        // camera follows up
+        if (player.y < H * 0.4) {
+          const diff = H * 0.4 - player.y;
+          player.y += diff;
+          cameraY += diff;
+          maxHeight = Math.max(maxHeight, cameraY);
+          score = Math.floor(maxHeight);
         }
+
+        // if fell down
+        if (player.y - cameraY > H + 200) {
+          gameOver = true;
+          msg.textContent = "GAME OVER — пробел, чтобы сыграть ещё раз";
+        }
+
+        // platforms: remove below, add above
+        platforms = platforms.filter((p) => p.y - cameraY < H + 40);
+        while (platforms.length < 12) {
+          const highest = platforms.reduce((m, p) => Math.min(m, p.y), Infinity);
+          spawnPlatform(highest - 70 - Math.random() * 30);
+        }
+
+        // snow movement
+        for (const s of snowflakes) {
+          s.y += s.speed;
+          if (s.y > H) {
+            s.y = -5;
+            s.x = Math.random() * W;
+          }
+        }
+
+        ui.textContent = "SCORE: " + score;
       }
 
-      ui.textContent = "SCORE: " + score;
       draw();
       requestAnimationFrame(update);
     }
@@ -270,6 +270,7 @@
     }
 
     function drawPlayer() {
+      if (!player) return;
       const x = player.x;
       const y = player.y - cameraY;
 
@@ -343,15 +344,9 @@
       };
     }
 
-    // start idle loop
+    // ---- СТАРТ ИГРЫ ----
+    startGame();
     update();
-
-    // restart on space after game over
-    window.addEventListener("keydown", (e) => {
-      if (gameOver && e.key === " ") {
-        startGame();
-      }
-    });
   </script>
 </body>
 </html>
