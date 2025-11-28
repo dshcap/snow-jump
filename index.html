@@ -59,8 +59,15 @@
 
     // ---- ФОН ----
     const bgImage = new Image();
-    // Если картинка лежит в папке gallery, то напиши: "gallery/mountainsgame.png"
+    let bgLoaded = false;
+
+    // !!! ЕСЛИ КАРТИНКА В ПАПКЕ gallery, ПОДМЕНИ ЭТУ СТРОКУ:
+    // bgImage.src = "gallery/mountainsgame.png";
     bgImage.src = "mountainsgame.png";
+
+    bgImage.onload = () => {
+      bgLoaded = true;
+    };
 
     // ----- GAME STATE -----
     let platforms = [];
@@ -202,7 +209,7 @@
           }
         }
 
-        // камера: когда герой поднимается выше 40% высоты — тянем всё вниз
+        // камера: когда герой поднимается выше 40% высоты — тянем мир вниз
         if (player.y < H * 0.4) {
           const diff = H * 0.4 - player.y;
           player.y += diff;
@@ -224,7 +231,7 @@
           spawnPlatform(highest - 70 - Math.random() * 30);
         }
 
-        // снежинки
+        // снежинки (просто падают, без связи с камерой)
         for (const s of snowflakes) {
           s.y += s.speed;
           if (s.y > H) {
@@ -242,32 +249,25 @@
 
     // ----- DRAW -----
     function drawBackground() {
-      // Фон-горы
-      ctx.save();
-      ctx.translate(0, -cameraY * 0.1); // лёгкий параллакс
+      // базовый градиент
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, "#8fd6ff");
+      g.addColorStop(1, "#6ab4ff");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
 
-      if (bgImage.complete && bgImage.naturalWidth > 0) {
+      // картинка фона поверх градиента
+      if (bgLoaded) {
         ctx.drawImage(bgImage, 0, 0, W, H);
-      } else {
-        // запасной градиент, пока фон не загрузился
-        const g = ctx.createLinearGradient(0, 0, 0, H);
-        g.addColorStop(0, "#8fd6ff");
-        g.addColorStop(1, "#6ab4ff");
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, W, H);
       }
-      ctx.restore();
 
-      // снежинки поверх фона
-      ctx.save();
-      ctx.translate(0, -cameraY * 0.1);
+      // снежинки поверх фона (не зависят от cameraY)
       ctx.fillStyle = "rgba(255,255,255,0.9)";
       for (const s of snowflakes) {
         ctx.beginPath();
         ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
         ctx.fill();
       }
-      ctx.restore();
     }
 
     function drawPlatforms() {
