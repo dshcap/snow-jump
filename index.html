@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Snow Jump</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #87c9ff;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+    }
+    canvas {
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      image-rendering: pixelated;
+      background: linear-gradient(#8fd6ff, #6ab4ff);
+    }
+    #ui {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+      font-weight: 700;
+      font-size: 20px;
+      pointer-events: none;
+    }
+    #msg {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      text-shadow: 0 2px 3px rgba(0,0,0,0.6);
+      font-size: 16px;
+      text-align: center;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="ui">SCORE: 0</div>
+  <div id="msg">← → или A/D — двигаться, пробел — начать</div>
+  <canvas id="game" width="480" height="720"></canvas>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const ui = document.getElementById("ui");
+    const msg = document.getElementById("msg");
+
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // ----- GAME STATE -----
+    let platforms = [];
+    let snowflakes = [];
+    let player;
+    let cameraY = 0;
+    let maxHeight = 0;
+    let score = 0;
+    let keys = {};
+    let gameOver = false;
+    let started = false;
+
+    // ----- INPUT -----
+    window.addEventListener("keydown", (e) => {
+      keys[e.key.toLowerCase()] = true;
+      if (!started && (e.key === " " || e.key === "ArrowUp")) {
+        startGame();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    // ----- INIT -----
+    function startGame() {
+      platforms = [];
+      snowflakes = [];
+      cameraY = 0;
+      maxHeight = 0;
+      score = 0;
+      gameOver = false;
+      started = true;
+
+      // player in the middle bottom
+      player = {
+        x: W / 2 - 20,
+        y: H - 120,
+        w: 40,
+        h: 50,
+        vy: -18, // initial jump
+        gravity: 0.7,
+        moveSpeed: 5,
+      };
+
+      // initial platforms
+      const baseY = H - 50;
+      for (let i = 0; i < 10; i++) {
+        platforms.push({
+          x: Math.random() * (W - 110),
+          y: baseY - i * 70,
+          w: 110,
+          h: 22,
+        });
+      }
+
+      // snow
+      for (let i = 0; i < 80; i++) {
+        snowflakes.push({
+          x: Math.random() * W,
+          y: Math.random() * H,
+          r: 1 + Math.random() * 2,
+          speed: 0.5 + Math.random() * 1.2,
+        });
+      }
+
+      msg.textContent = "";
+    }
+
+    // ----- PLATFORM GENERATION -----
+    function spawnPlatform(y) {
+      platforms.push({
+        x: Math.random() * (W - 110),
+        y,
+        w: 110,
+        h: 22,
+      });
+    }
+
+    // ----- UPDATE -----
+    function update() {
+      if (!started) {
+        draw(); // just idle background
+        requestAnimationFrame(update);
+        return;
+      }
+      if (gameOver) {
+        draw();
+        requestAnimationFrame(update);
+        return;
+      }
+
+      // player movement
+      if (keys["arrowleft"] || keys["a"]) player.x -= player.moveSpeed;
+      if (keys["arrowright"] || keys["d"]) player.x += player.moveSpeed;
+
+      // horizontal wrap
+      if (player.x + player.w < 0) player.x = W;
+      if (player.x > W) player.x = -player.w;
+
+      // gravity
+      player.vy += player.gravity;
+      player.y += player.vy;
+
+      // collision with platforms (only when falling)
+      if (player.vy > 0) {
+        for (const p of platforms) {
+          if (
+            player.x + player.w > p.x &&
+            player.x < p.x + p.w &&
+            player.y + player.h > p.y &&
+            player.y + player.h < p.y + p.h &&
+            player.vy > 0
+          ) {
+            player.vy = -18; // jump
+          }
+        }
+      }
+
+      // camera follows up
+      if (player.y < H * 0.4) {
+        const diff = H * 0.4 - player.y;
+        player.y += diff;
+        cameraY += diff;
+        maxHeight = Math.max(maxHeight, cameraY);
+        score = Math.floor(maxHeight);
+      }
+
+      // if fell down
+      if (player.y - cameraY > H + 200) {
+        gameOver = true;
+        msg.textContent = "GAME OVER — пробел, чтобы сыграть ещё раз";
+      }
+
+      // platforms: remove below, add above
+      platforms = platforms.filter((p) => p.y - cameraY < H + 40);
+      while (platforms.length < 12) {
+        const highest = platforms.reduce((m, p) => Math.min(m, p.y), Infinity);
+        spawnPlatform(highest - 70 - Math.random() * 30);
+      }
+
+      // snow movement
+      for (const s of snowflakes) {
+        s.y += s.speed;
+        if (s.y > H) {
+          s.y = -5;
+          s.x = Math.random() * W;
+        }
+      }
+
+      ui.textContent = "SCORE: " + score;
+      draw();
+      requestAnimationFrame(update);
+    }
+
+    // ----- DRAW -----
+    function drawBackground() {
+      // sky gradient is from CSS, here – mountains
+      ctx.save();
+      ctx.translate(0, -cameraY * 0.3); // parallax for mountains
+
+      // far mountains
+      ctx.fillStyle = "#aee4ff";
+      ctx.beginPath();
+      ctx.moveTo(0, H * 0.8);
+      ctx.lineTo(W * 0.3, H * 0.3);
+      ctx.lineTo(W * 0.6, H * 0.8);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(W * 0.4, H * 0.9);
+      ctx.lineTo(W * 0.8, H * 0.35);
+      ctx.lineTo(W * 1.1, H * 0.9);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+
+      // snowflakes on top
+      ctx.save();
+      ctx.translate(0, -cameraY * 0.1);
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      for (const s of snowflakes) {
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawPlatforms() {
+      ctx.fillStyle = "#dff3ff";
+      ctx.strokeStyle = "#8fb5d1";
+      ctx.lineWidth = 3;
+      for (const p of platforms) {
+        const y = p.y - cameraY;
+        ctx.beginPath();
+        ctx.roundRect(p.x, y, p.w, p.h, 6);
+        ctx.fill();
+        ctx.stroke();
+
+        // simple ice texture
+        ctx.strokeStyle = "rgba(255,255,255,0.7)";
+        ctx.beginPath();
+        ctx.moveTo(p.x + 6, y + 8);
+        ctx.lineTo(p.x + p.w - 8, y + 4);
+        ctx.moveTo(p.x + 10, y + 14);
+        ctx.lineTo(p.x + p.w - 16, y + 12);
+        ctx.stroke();
+        ctx.strokeStyle = "#8fb5d1";
+      }
+    }
+
+    function drawPlayer() {
+      const x = player.x;
+      const y = player.y - cameraY;
+
+      // backpack
+      ctx.fillStyle = "#c0243a";
+      ctx.fillRect(x - 8, y + 8, 16, 30);
+
+      // legs
+      ctx.fillStyle = "#e04848";
+      ctx.fillRect(x + 4, y + player.h - 18, 12, 18);
+      ctx.fillRect(x + 22, y + player.h - 18, 12, 18);
+      ctx.fillStyle = "#3b2b20";
+      ctx.fillRect(x + 4, y + player.h - 6, 12, 6);
+      ctx.fillRect(x + 22, y + player.h - 6, 12, 6);
+
+      // body
+      ctx.fillStyle = "#1f77b4";
+      ctx.fillRect(x + 4, y + 16, 30, 26);
+      ctx.fillStyle = "#0b4f80";
+      ctx.fillRect(x + 16, y + 16, 4, 26); // zipper
+      ctx.fillRect(x + 4, y + 16, 6, 18);  // sleeve L
+
+      // arms
+      const raising = player.vy < 0; // jumping up
+      if (raising) {
+        // right arm up
+        ctx.fillStyle = "#1f77b4";
+        ctx.fillRect(x + 30, y + 4, 8, 20);
+        ctx.fillStyle = "#f7c390";
+        ctx.fillRect(x + 30, y, 8, 8);
+      } else {
+        ctx.fillStyle = "#1f77b4";
+        ctx.fillRect(x + 32, y + 22, 8, 16);
+        ctx.fillStyle = "#f7c390";
+        ctx.fillRect(x + 32, y + 36, 8, 8);
+      }
+
+      // head
+      ctx.fillStyle = "#3b2b20";
+      ctx.fillRect(x + 4, y, 32, 12); // hair
+      ctx.fillStyle = "#f7c390";
+      ctx.fillRect(x + 6, y + 8, 28, 16);
+
+      // face details
+      ctx.fillStyle = "#3b2b20";
+      ctx.fillRect(x + 12, y + 14, 4, 4); // eye
+      ctx.fillRect(x + 22, y + 14, 4, 4); // eye
+      ctx.fillRect(x + 14, y + 20, 10, 2); // mouth
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      drawBackground();
+      drawPlatforms();
+      drawPlayer();
+    }
+
+    // allow roundRect on some older browsers
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+        if (w < 2 * r) r = w / 2;
+        if (h < 2 * r) r = h / 2;
+        this.beginPath();
+        this.moveTo(x + r, y);
+        this.arcTo(x + w, y, x + w, y + h, r);
+        this.arcTo(x + w, y + h, x, y + h, r);
+        this.arcTo(x, y + h, x, y, r);
+        this.arcTo(x, y, x + w, y, r);
+        this.closePath();
+        return this;
+      };
+    }
+
+    // start idle loop
+    update();
+
+    // restart on space after game over
+    window.addEventListener("keydown", (e) => {
+      if (gameOver && e.key === " ") {
+        startGame();
+      }
+    });
+  </script>
+</body>
+</html>
